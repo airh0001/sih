@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
+  <link as="style" href="https://fonts.googleapis.com/css2?display=swap&family=Inter:wght@400;500;700;900&family=Noto+Sans:wght@400;500;700;900" onload="this.rel='stylesheet'" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+  <title>ARGO Data Explorer</title>
+  <link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,"/>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script type="module" src="https://unpkg.com/@splinetool/viewer@1.10.57/build/spline-viewer.js"></script>
+
+
+  <style>
+    #map { height: 550px; border-radius: 8px; }
+    :root { --primary-color: #1173d4; }
+    section { scroll-margin-top: 80px; }
+
+
+    /* Background waves */
+    .hero-bg { background: radial-gradient(circle at center, #0d1b2a, #000); }
+    .wave { position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: rgba(17,115,212,0.1); border-radius: 45%; animation: rotate 18s linear infinite, pulse 6s ease-in-out infinite; }
+    .wave:nth-child(2) { animation-duration: 28s, 8s; background: rgba(17,115,212,0.15); }
+    @keyframes rotate { 0% { transform: rotate(0deg) translate(0,0); } 50% { transform: rotate(180deg) translate(30px, -30px); } 100% { transform: rotate(360deg) translate(0,0); } }
+    @keyframes pulse { 0%, 100% { opacity: 0.1; transform: scale(1); } 50% { opacity: 0.25; transform: scale(1.05); } }
+
+
+    /* Bubble animation */
+    .bubbles { position: absolute; width: 100%; height: 100%; bottom: 0; left: 0; pointer-events: none; overflow: hidden; z-index: 2; }
+    .bubbles span { position: absolute; bottom: -60px; display: block; width: 20px; height: 20px; background: rgba(18, 196, 255, 0.6); border-radius: 50%; box-shadow: 0 0 12px rgba(18, 196, 255, 0.9); animation: rise 10s linear infinite; left: calc(var(--i) * 10%); animation-delay: calc(var(--i) * 0.5s); }
+    .bubbles span:nth-child(even) { width: 12px; height: 12px; background: rgba(135, 206, 250, 0.7); box-shadow: 0 0 8px rgba(135, 206, 250, 0.9); }
+    @keyframes rise { 0% { transform: translateY(0) scale(0.8); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-110vh) scale(1.2); opacity: 0; } }
+
+
+    /* Fade animations */
+    @keyframes fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes fade-in-down { 0% { opacity: 0; transform: translateY(-20px);} 100% { opacity: 1; transform: translateY(0);} }
+    @keyframes fade-in-up { 0% { opacity: 0; transform: translateY(20px);} 100% { opacity: 1; transform: translateY(0);} }
+
+
+    .animate-fade-in { animation: fade-in 1s ease forwards; }
+    .animate-fade-in-down { animation: fade-in-down 1s ease forwards; }
+    .animate-fade-in-up { animation: fade-in-up 1s ease forwards; }
+    .delay-200 { animation-delay: 0.2s; }
+    .delay-400 { animation-delay: 0.4s; }
+
+
+    /* Typing Effect */
+    .typing { display: inline-block; border-right: 2px solid var(--primary-color); white-space: nowrap; overflow: hidden; animation: typing 3s steps(30, end) forwards, blink 0.75s step-end  infinite; }
+    @keyframes typing { from { width: 0; } to { width: 100%; } }
+    @keyframes blink { 50% { border-color: transparent; } }
+
+
+    /* Floating Button */
+    .float { animation: float 3s ease-in-out infinite; }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+
+    /* Spline viewer adjustments */
+    spline-viewer { opacity: 0.7; position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; transform: scale(1.154); transform-origin: center; }
+
+
+    /* small layout tweaks for inline pages */
+    .inline-page { display: none; padding: 2.5rem; }
+    .inline-page.active { display: block; }
+    /* ensure back-button appears on top */
+    .back-btn { position: fixed; top: 1rem; left: 1rem; z-index: 60; }
+
+
+    /* Added small style for the float-select dropdown we added */
+    .float-select-temp { background: #1a1e23; color: #fff; padding: 0.5rem 0.75rem; border-radius: 8px; border: 1px solid #283039; min-width: 220px; }
+  </style>
+</head>
+<body class="bg-[#111418] text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
+
+
+<header class="flex items-center justify-between border-b border-b-[#283039] px-6 py-4 md:px-10 fixed top-0 left-0 right-0 bg-[#111418] z-50">
+  <a onclick="showSection('home')" class="flex items-center gap-3 cursor-pointer">
+    <span class="material-symbols-outlined text-[var(--primary-color)] text-3xl"> water </span>
+    <h2 class="text-xl font-bold">ARGO Data Explorer</h2>
+  </a>
+  <nav class="hidden md:flex gap-6">
+    <a class="text-white transform transition-transform duration-200 hover:scale-110" onclick="showSection('home')">Home</a>
+    <a class="text-gray-300 hover:text-white transform transition-transform duration-200 hover:scale-110" onclick="showSection('dashboard')">Dashboard</a>
+    <a class="text-gray-300 hover:text-white transform transition-transform duration-200 hover:scale-110" onclick="showSection('visualizations')">Visualizations</a>
+    <a class="text-gray-300 hover:text-white transform transition-transform duration-200 hover:scale-110" href="#about">About</a>
+  </nav>
+</header>
+
+
+<section id="home" class="h-screen flex flex-col items-center justify-center text-center px-6 lg:px-20 relative hero-bg overflow-hidden">
+  <script type="module" src="https://unpkg.com/@splinetool/viewer@1.10.57/build/spline-viewer.js"></script>
+  <spline-viewer url="https://prod.spline.design/aeDeXt-Mv30W1cce/scene.splinecode"></spline-viewer>
+  <div class="wave"></div>
+  <div class="wave"></div>
+  <div class="bubbles">
+    <span style="--i:1;"></span><span style="--i:2;"></span><span style="--i:3;"></span><span style="--i:4;"></span><span style="--i:5;"></span>
+    <span style="--i:6;"></span><span style="--i:7;"></span><span style="--i:8;"></span><span style="--i:9;"></span><span style="--i:10;"></span>
+  </div>
+
+
+  <h1 class="text-4xl md:text-6xl font-extrabold mb-6 leading-tight opacity-0 animate-fade-in-down relative z-10">
+    Explore the Depths with<br/>
+    <span class="text-[var(--primary-color)] typing">ARGO Data Explorer</span>
+  </h1>
+  <p class="text-gray-300 max-w-2xl mb-8 opacity-0 animate-fade-in delay-200 relative z-10">
+    Discover real-time ocean float data, visualize global patterns, and interact with ARGO’s intelligence — all in one place.
+  </p>
+  <a onclick="showSection('dashboard')" class="bg-[var(--primary-color)] text-white px-6 py-3 rounded-xl font-semibold text-lg hover:bg-blue-600 transition transform hover:scale-105 opacity-0 animate-fade-in-up delay-400 relative z-10 float">
+    Get Started
+  </a>
+</section>
+
+
+<main id="dashboard" class="p-6 lg:p-10 pt-28">
+  <div class="grid grid-cols-12 gap-6">
+    <div class="col-span-12 relative h-[400px] mb-6 rounded-lg overflow-hidden shadow-lg">
+      <spline-viewer url="https://prod.spline.design/9Zt2PJH3uJ80YQgx/scene.splinecode"
+        style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%) scale(1.3); width:100%; height:100%; z-index:1;">
+      </spline-viewer>
+      <div class="absolute inset-0 bg-gradient-to-t from-[#111418]/70 to-transparent z-10"></div>
+      <h2 class="absolute bottom-0 left-[39%] transform -translate-x-1/2 z-20 text-lg md:text-xl font-bold text-white animate-fade-in-up">
+        Your OceanPal is here!
+      </h2>
+    </div>
+
+
+    <div class="col-span-12 lg:col-span-7 bg-[#1a1e23] p-4 rounded-lg shadow-lg">
+      <div id="map" class="h-[450px] w-full rounded-lg"></div>
+    </div>
+
+
+    <div class="col-span-12 lg:col-span-5 flex flex-col gap-6">
+      <div id="float-details" class="bg-[#1a1e23] p-6 rounded-lg shadow-lg">
+        <h3 class="text-lg font-bold">Float Details</h3>
+        <p class="mt-2 text-sm text-gray-300">Select a float on the map.</p>
+      </div>
+
+
+      <div class="bg-[#1a1e23] p-6 rounded-lg shadow-lg flex flex-col flex-1">
+        <h3 class="text-xl font-bold mb-4">Chat with OceanPal</h3>
+        <div id="chat-window" class="flex-1 overflow-y-auto space-y-3 text-sm"></div>
+        <div class="mt-4 flex">
+          <input id="chat-input" type="text" placeholder="Ask a question..." class="flex-1 bg-[#283039] text-white rounded-l-md px-3 py-2 focus:ring-2 focus:ring-[var(--primary-color)]">
+          <button id="send-btn" class="bg-[var(--primary-color)] px-4 rounded-r-md hover:bg-blue-600">
+            <span class="material-symbols-outlined">send</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+
+<section id="visualizations" class="relative h-screen flex flex-col items-center justify-center text-center px-6 lg:px-20 overflow-hidden bg-[#0f1318]">
+  <spline-viewer url="https://prod.spline.design/tKyylzL7RmCYxmfz/scene.splinecode" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:0; transform:scale(1.2); transform-origin:center;"></spline-viewer>
+  <div class="absolute inset-0 bg-gradient-to-b from-[#0f1318]/80 via-[#0f1318]/60 to-[#0f1318]/90 z-10"></div>
+
+
+  <div class="relative z-20 w-full">
+    <h2 class="text-3xl font-bold text-[var(--primary-color)] mb-6">Visualizations</h2>
+    <p class="text-gray-300 mb-10">Choose a visualization type to explore ARGO float data in different ways.</p>
+
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mb-6">
+      <a onclick="showSection('temperatureProfiles')" class="bg-[#1a1e23]/90 backdrop-blur-sm p-6 rounded-lg shadow-lg hover:scale-105 transition cursor-pointer block">
+        <h3 class="text-xl font-bold mb-2">Temperature Profiles</h3>
+        <p class="text-gray-400 text-sm">View vertical temperature variations of floats.</p>
+      </a>
+
+
+      <a onclick="showSection('salinityProfiles')" class="bg-[#1a1e23]/90 backdrop-blur-sm p-6 rounded-lg shadow-lg hover:scale-105 transition cursor-pointer block">
+        <h3 class="text-xl font-bold mb-2">Salinity Profiles</h3>
+        <p class="text-gray-400 text-sm">Explore salinity levels with depth across floats.</p>
+      </a>
+
+
+      <a onclick="showSection('trajectoryMaps')" class="bg-[#1a1e23]/90 backdrop-blur-sm p-6 rounded-lg shadow-lg hover:scale-105 transition cursor-pointer block">
+        <h3 class="text-xl font-bold mb-2">Trajectory Maps</h3>
+        <p class="text-gray-400 text-sm">Visualize float paths and movement patterns on the globe.</p>
+      </a>
+    </div>
+
+
+    <div class="flex justify-center gap-6">
+      <a onclick="showSection('heatmaps')" class="bg-[#1a1e23]/90 backdrop-blur-sm p-6 rounded-lg shadow-lg hover:scale-105 transition cursor-pointer block w-full sm:w-1/2 md:w-1/3 lg:w-1/4">
+        <h3 class="text-xl font-bold mb-2">Heatmaps</h3>
+        <p class="text-gray-400 text-sm">Generate heatmaps for temperature or salinity regions.</p>
+      </a>
+
+
+      <a onclick="showSection('timeSeries')" class="bg-[#1a1e23]/90 backdrop-blur-sm p-6 rounded-lg shadow-lg hover:scale-105 transition cursor-pointer block w-full sm:w-1/2 md:w-1/3 lg:w-1/4">
+        <h3 class="text-xl font-bold mb-2">Time Series</h3>
+        <p class="text-gray-400 text-sm">Analyze float data trends over time.</p>
+      </a>
+    </div>
+  </div>
+</section>
+
+
+<section id="temperatureProfiles" class="inline-page" >
+  <a class="back-btn bg-[var(--primary-color)] text-white px-4 py-2 rounded-lg shadow-md hover:bg-blue-600" onclick="showSection('visualizations')">← Back to Visualizations</a>
+  <div class="relative z-20 w-full">
+    <h1 class="text-3xl font-bold text-[var(--primary-color)] mb-4">Temperature Profiles</h1>
+    <p class="text-gray-300 mb-6">Vertical temperature variations of ARGO floats (summary).</p>
+
+
+    <div class="mb-6 flex items-center gap-4">
+      <label for="float-select-temp" class="text-gray-300">Select ARGO Float:</label>
+      <select id="float-select-temp" class="float-select-temp"></select>
+      <button id="refresh-temp-profiles" class="bg-[var(--primary-color)] px-3 py-1 rounded-md hover:bg-blue-600 text-sm">Refresh</button>
+    </div>
+
+
+    <div id="temp-chart-wrapper" class="bg-[#1a1e23] p-4 rounded-lg shadow-lg">
+      <canvas id="temp-profile-chart" class="w-full" style="height:520px;"></canvas>
+    </div>
+
+
+    <div id="temp-profiles-container" class="grid md:grid-cols-2 gap-4 mt-6"></div>
+  </div>
+</section>
+
+
+<section id="salinityProfiles" class="inline-page">
+  <a class="back-btn bg-[var(--primary-color)] text-white px-4 py-2 rounded-lg shadow-md hover:bg-blue-600" onclick="showSection('visualizations')">← Back to Visualizations</a>
+  <div class="relative z-20 w-full">
+    <h1 class="text-3xl font-bold text-[var(--primary-color)] mb-4">Salinity Profiles</h1>
+    <p class="text-gray-300 mb-6">Salinity with depth across floats (summary).</p>
+    <div id="salinity-profiles-container" class="grid md:grid-cols-2 gap-4"></div>
+  </div>
+</section>
+
+
+<section id="trajectoryMaps" class="inline-page">
+  <a class="back-btn bg-[var(--primary-color)] text-white px-4 py-2 rounded-lg shadow-md hover:bg-blue-600" onclick="showSection('visualizations')">← Back to Visualizations</a>
+  <div class="relative z-20 w-full">
+    <h1 class="text-3xl font-bold text-[var(--primary-color)] mb-4">Trajectory Maps</h1>
+    <p class="text-gray-300 mb-6">Float paths and movement patterns.</p>
+    <div id="trajectory-map" class="h-[70vh] rounded-lg bg-[#1a1e23] overflow-hidden shadow-lg"></div>
+  </div>
+</section>
+
+
+<section id="heatmaps" class="inline-page">
+  <a class="back-btn bg-[var(--primary-color)] text-white px-4 py-2 rounded-lg shadow-md hover:bg-blue-600" onclick="showSection('visualizations')">← Back to Visualizations</a>
+  <div class="relative z-20 w-full">
+    <h1 class="text-3xl font-bold text-[var(--primary-color)] mb-4">Heatmaps</h1>
+    <p class="text-gray-300 mb-6">Temperature / salinity heatmap markers.</p>
+    <div id="heatmap-map" class="h-[70vh] rounded-lg bg-[#1a1e23] overflow-hidden shadow-lg"></div>
+  </div>
+</section>
+
+
+<section id="timeSeries" class="inline-page">
+  <a class="back-btn bg-[var(--primary-color)] text-white px-4 py-2 rounded-lg shadow-md hover:bg-blue-600" onclick="showSection('visualizations')">← Back to Visualizations</a>
+  <div class="relative z-20 w-full">
+    <h1 class="text-3xl font-bold text-[var(--primary-color)] mb-4">Time Series</h1>
+    <p class="text-gray-300 mb-6">Trends over time (temperature example).</p>
+    <div class="bg-[#1a1e23] p-4 rounded-lg shadow-lg">
+      <canvas id="timeseries-canvas" class="w-full" style="height:420px;"></canvas>
+    </div>
+  </div>
+</section>
+
+
+<script>
+/* ---------- Config ---------- */
+// Keep your backend configs the same
+const BACKEND_URL = "http://YOUR_SERVER_IP:8000";
+const FASTAPI_URL = "https://sih-ermo.onrender.com"; // FastAPI RAG server
+
+
+/* ---------- Helper functions to safely access columns ---------- */
+function findFieldName(row, candidates) {
+  // row: object of csv row; candidates: array of lowercase candidate names
+  const keys = Object.keys(row);
+  for (const cand of candidates) {
+    for (const k of keys) {
+      if (k.toLowerCase() === cand) return k;
+    }
+  }
+  // fallback: try to find keys that include candidate substrings
+  for (const cand of candidates) {
+    for (const k of keys) {
+      if (k.toLowerCase().includes(cand)) return k;
+    }
+  }
+  return null;
+}
+
+
+/* ---------- Float list fetching & rendering ---------- */
+async function fetchFloats() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/floats`);
+    const data = await res.json();
+    // renderFloats used elsewhere - keep signature
+    renderFloats(data);
+    return data;
+  } catch (err) {
+    console.error("Error fetching floats:", err);
+    return null;
+  }
+}
+
+
+/* ---------- Load Float CSV data (already present in your server) ---------- */
+async function loadFloatData(floatId) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/float/${floatId}/data`);
+    const data = await res.json();
+    return data.data || [];
+  } catch (err) {
+    console.error(`Error loading float data for ${floatId}:`, err);
+    return [];
+  }
+}
+
+
+/* ---------- Existing helper functions (kept intact, minor safe guards) ---------- */
+function renderFloats(floats) {
+  // your previous renderFloats expects an element with id "float-select" in some flow.
+  // Keep it safe: if element not present, skip populating.
+  const select = document.getElementById("float-select");
+  if (!select) return;
+
+
+  select.innerHTML = "";
+  // handle both shapes: node server returns object mapping, fastapi might return {floats: [...]}
+  if (floats && typeof floats === "object" && !Array.isArray(floats)) {
+    // if response is { floats: [...] }
+    if (Array.isArray(floats.floats)) {
+      floats.floats.forEach(id => {
+        const option = document.createElement("option");
+        option.value = id;
+        option.textContent = id;
+        select.appendChild(option);
+      });
+    } else {
+      Object.keys(floats).forEach(id => {
+        const option = document.createElement("option");
+        option.value = id;
+        // if floats[id].summary exists, include it
+        const summary = floats[id]?.summary ? ` - ${floats[id].summary}` : "";
+        option.textContent = `${id}${summary}`;
+        select.appendChild(option);
+      });
+    }
+  } else if (Array.isArray(floats)) {
+    floats.forEach(id => {
+      const option = document.createElement("option");
+      option.value = id;
+      option.textContent = id;
+      select.appendChild(option);
+    });
+  }
+}
+
+
+function renderFloatData(data) {
+  console.log("Float Data:", data);
+  // left as-is: your other logic can consume this
+}
+
+
+function displayChat(answer) {
+  // use chat window renderer already used in your code
+  addMessage(answer, "bot");
+}
+
+
+function displayFloatAnswer(answer, context) {
+  const resultBox = document.getElementById("float-query-result");
+  if (resultBox) resultBox.textContent = `Answer:\n${answer}\n\nContext:\n${context}`;
+}
+
+
+/* ---------- Globals ---------- */
+let floats = {};
+let selectedFloatId = null;
+let map; // main dashboard map
+
+
+let trajMap, trajMapInitialized = false;
+let heatMap, heatMapInitialized = false;
+let timeSeriesChart, timeSeriesInitialized = false;
+let tempProfilesInitialized = false;
+let salinityProfilesInitialized = false;
+
+
+let tempProfileChartInstance = null; // Chart.js instance for vertical profile
+
+
+/* ---------- Utility: show/hide sections ---------- */
+function showSection(id) {
+  const inlineSections = ['temperatureProfiles','salinityProfiles','trajectoryMaps','heatmaps','timeSeries'];
+  const mainSections = ['home','dashboard','visualizations'];
+
+
+  if (id === 'home' || id === 'dashboard' || id === 'visualizations') {
+    // Hide all sections except the target main section
+    mainSections.forEach(s => {
+      const el = document.getElementById(s);
+      if (el) el.classList.add('hidden');
+    });
+    inlineSections.forEach(s => {
+      const el = document.getElementById(s);
+      if (el) el.classList.remove('active');
+    });
+    const target = document.getElementById(id);
+    if (target) target.classList.remove('hidden');
+    setTimeout(() => {
+      window.scrollTo({ top: target.offsetTop - 80, behavior: 'smooth' });
+    }, 50);
+    return;
+  }
+  
+  // Hide main sections and show the target inline section
+  mainSections.forEach(s => {
+    const el = document.getElementById(s);
+    if (el) el.classList.add('hidden');
+  });
+  inlineSections.forEach(s => {
+    const el = document.getElementById(s);
+    if (el) el.classList.remove('active');
+  });
+
+
+  const target = document.getElementById(id);
+  if (target) {
+    target.classList.add('active');
+    setTimeout(() => {
+      if (id === 'trajectoryMaps') initTrajectoryMap();
+      if (id === 'heatmaps') initHeatmap();
+      if (id === 'timeSeries') initTimeSeries();
+      if (id === 'temperatureProfiles') initTemperatureProfiles();
+      if (id === 'salinityProfiles') initSalinityProfiles();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 60);
+  }
+}
+
+
+/* ---------- Dashboard map & floats ---------- */
+function initDashboardMap() {
+  try {
+    map = L.map('map').setView([12.34, 56.78], 3);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+  } catch (e) {
+    console.error("Leaflet init error", e);
+  }
+}
+
+
+async function loadFloats() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/floats`);
+    const all = await res.json();
+    // support both shapes: { floats: [...] } or object mapping
+    if (all && all.floats && Array.isArray(all.floats)) {
+      // build a simple mapping to keep other code compatible
+      const mapping = {};
+      all.floats.forEach(id => mapping[id] = { id, location: { lat: 0, lon: 0 }, summary: "" });
+      floats = mapping;
+    } else if (all && typeof all === "object" && !Array.isArray(all)) {
+      floats = all;
+    } else {
+      floats = {};
+    }
+
+
+    // Add markers only if floats contains lat/lon
+    Object.keys(floats).forEach(id => {
+      const f = floats[id];
+      const lat = f?.location?.lat;
+      const lon = f?.location?.lon;
+      if (lat !== undefined && lon !== undefined && !isNaN(lat) && !isNaN(lon)) {
+        const marker = L.marker([f.location.lat, f.location.lon]).addTo(map);
+        marker.bindPopup(`<b>${f.id}</b><br>${f.summary || ""}`);
+        marker.on('click', () => {
+          selectedFloatId = id;
+          renderDetails(id);
+        });
+      }
+    });
+  } catch (err) {
+    console.error("Error loading floats:", err);
+  }
+}
+
+
+async function renderDetails(id) {
+  const f = floats[id] || { id };
+  const container = document.getElementById("float-details");
+  let csvData = [];
+  try {
+    const res = await fetch(`${BACKEND_URL}/float/${id}/data`);
+    const json = await res.json();
+    csvData = json.data || [];
+  } catch (err) {
+    console.error("CSV fetch failed", err);
+  }
+  container.innerHTML = `
+    <h3 class="text-lg font-bold">Float Details: ${f.id}</h3>
+    <p class="mt-2 text-sm text-gray-300">${f.summary || ''}</p>
+    <p class="text-sm text-gray-300"><b>Location:</b> ${f.location ? `${Number(f.location.lat).toFixed(2)}°, ${Number(f.location.lon).toFixed(2)}°` : 'N/A'}</p>
+    <p class="text-sm text-gray-300"><b>Trajectory Points:</b> ${csvData.length}</p>
+    <p class="text-sm text-gray-300"><b>CSV Records:</b> ${csvData.length}</p>
+  `;
+}
+
+
+/* ---------- Chat functions ---------- */
+const chatWindow = document.getElementById("chat-window");
+const chatInput = document.getElementById("chat-input");
+const sendBtn = document.getElementById("send-btn");
+
+
+function addMessage(text, sender) {
+  const msg = document.createElement("div");
+  msg.className = sender === "user" ? "text-right" : "text-left";
+  msg.innerHTML = `<span class="inline-block px-3 py-2 rounded-lg ${sender==='user'?'bg-[var(--primary-color)]':'bg-gray-700'}">${text}</span>`;
+  if (chatWindow) {
+    chatWindow.appendChild(msg);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+  }
+}
+
+
+async function sendMessage() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  addMessage(text, "user");
+  chatInput.value = "";
+
+
+  try {
+    const endpoint =  "/ask" ;
+    const bodyData = selectedFloatId ? { floatId: selectedFloatId, query: text } : { query: text };
+    const res = await fetch(`${BACKEND_URL}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bodyData)
+    });
+    const data = await res.json();
+    const answer = data?.answer || data?.context || "No answer available.";
+    addMessage(answer, "bot");
+  } catch (err) {
+    console.error("Chat error:", err);
+    addMessage("Error connecting to server.", "bot");
+  }
+}
+
+
+if (sendBtn) {
+  sendBtn.addEventListener("click", sendMessage);
+  chatInput.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
+}
+
+
+/* ---------- Inline visual initializers ---------- */
+
+
+/* ---------- Temperature Profiles (UPDATED) ---------- */
+async function initTemperatureProfiles() {
+  if (tempProfilesInitialized) return;
+  tempProfilesInitialized = true;
+
+
+  const select = document.getElementById("float-select-temp");
+  const refreshBtn = document.getElementById("refresh-temp-profiles");
+  const container = document.getElementById('temp-profiles-container');
+  container.innerHTML = '';
+
+
+  async function populateDropdown() {
+    select.innerHTML = '';
+    try {
+      const res = await fetch(`${BACKEND_URL}/floats`);
+      const allFloats = await res.json();
+      const ids = Object.keys(allFloats);
+
+
+      ids.forEach(id => {
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = id;
+        select.appendChild(opt);
+      });
+
+
+      if (ids.length > 0) {
+        loadTemperatureProfile(ids[0]);
+      }
+    } catch (err) {
+      console.error("Failed to populate float dropdown:", err);
+      select.innerHTML = '<option>Error loading floats</option>';
+    }
+  }
+
+
+  select.addEventListener('change', (e) => {
+    loadTemperatureProfile(e.target.value);
+  });
+
+
+  refreshBtn.addEventListener('click', async () => {
+    await populateDropdown();
+  });
+
+
+  await populateDropdown();
+
+
+  // Build summary cards
+  try {
+    const res = await fetch(`${BACKEND_URL}/floats`);
+    const allFloats = await res.json();
+    const ids = Object.keys(allFloats);
+
+
+    for (const id of ids) {
+      const r = await fetch(`${BACKEND_URL}/float/${id}/data`);
+      const rows = (await r.json()).data || [];
+
+
+      const temps = rows.map(r => {
+        const v = r.temperature ?? r.temp ?? r.T ?? r.t ?? r.Temp ?? r.Temperature;
+        return v !== undefined && v !== '' ? Number(v) : null;
+      }).filter(x => x !== null && !isNaN(x));
+
+
+      const minT = temps.length ? Math.min(...temps).toFixed(2) : '—';
+      const maxT = temps.length ? Math.max(...temps).toFixed(2) : '—';
+
+
+      const card = document.createElement('div');
+      card.className = 'bg-[#1a1e23] p-4 rounded-lg shadow-lg';
+      card.innerHTML = `<h3 class="text-lg font-bold mb-2">${id}</h3>
+                        <p class="text-gray-300 mb-1"><b>Records:</b> ${rows.length}</p>
+                        <p class="text-gray-300"><b>Temperature:</b> Min ${minT}°C — Max ${maxT}°C</p>`;
+      container.appendChild(card);
+    }
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = `<div class="text-red-400">Failed to load temperature profiles.</div>`;
+  }
+}
+
+
+async function loadTemperatureProfile(floatId) {
+  const rows = await loadFloatData(floatId);
+  console.log(`Fetched ${rows.length} rows for float ${floatId}.`);
+  
+  if (!rows || !rows.length) {
+    if (tempProfileChartInstance) {
+      tempProfileChartInstance.destroy();
+      tempProfileChartInstance = null;
+    }
+    return;
+  }
+
+
+  const sample = rows[0] || {};
+  const pressureField = findFieldName(sample, ['pressure','pres','p']);
+  const tempField = findFieldName(sample, ['temperature','temp','t','temp_c','temp_celsius']);
+  console.log(`Detected pressure field: ${pressureField}, temperature field: ${tempField}`);
+
+
+  if (!pressureField || !tempField) {
+    console.error("Could not find pressure or temperature fields in CSV rows.");
+    if (tempProfileChartInstance) {
+      tempProfileChartInstance.destroy();
+      tempProfileChartInstance = null;
+    }
+    return;
+  }
+
+
+  const points = [];
+  for (const r of rows) {
+    const pRaw = r[pressureField];
+    const tRaw = r[tempField];
+    const p = pRaw !== undefined && pRaw !== '' ? Number(pRaw) : NaN;
+    const t = tRaw !== undefined && tRaw !== '' ? Number(tRaw) : NaN;
+    if (!isNaN(p) && !isNaN(t)) {
+      points.push({ x: t, y: p });
+    }
+  }
+
+
+  if (!points.length) {
+    console.warn("No valid data points to plot. Destroying chart.");
+    if (tempProfileChartInstance) {
+      tempProfileChartInstance.destroy();
+      tempProfileChartInstance = null;
+    }
+    return;
+  }
+  
+  const ctx = document.getElementById('temp-profile-chart').getContext('2d');
+  if (tempProfileChartInstance) tempProfileChartInstance.destroy();
+
+
+  tempProfileChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: `Float ${floatId} — Temp vs Pressure`,
+        data: points,
+        fill: false,
+        borderColor: '#1173d4',
+        backgroundColor: 'rgba(17,115,212,0.2)',
+        pointRadius: 3,
+        tension: 0.2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: 'white' } },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const point = context.raw;
+              return `Temp: ${point.x.toFixed(2)} °C, Pressure: ${point.y.toFixed(2)} dbar`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          position: 'bottom',
+          title: { display: true, text: 'Temperature (°C)', color: 'white' },
+          ticks: { color: 'white' },
+          grid: { color: '#283039' }
+        },
+        y: {
+          type: 'linear',
+          reverse: true,
+          title: { display: true, text: 'Pressure (dbar)', color: 'white' },
+          ticks: { color: 'white' },
+          grid: { color: '#283039' }
+        }
+      }
+    }
+  });
+}
+
+
+/* ---------- Salinity Profiles (kept intact) ---------- */
+async function initSalinityProfiles() {
+  if (salinityProfilesInitialized) return;
+  salinityProfilesInitialized = true;
+  const container = document.getElementById('salinity-profiles-container');
+  container.innerHTML = '';
+
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/floats`);
+    const allFloats = await res.json();
+    const ids = Object.keys(allFloats);
+
+    for (const id of ids) {
+      let rows = [];
+      try {
+        const r = await fetch(`${BACKEND_URL}/float/${id}/data`);
+        rows = (await r.json()).data || [];
+      } catch(e) { rows = []; }
+
+
+      const vals = rows.map(r => {
+        const v = r.salinity ?? r.salt ?? r.S ?? r.sal;
+        return v !== undefined && v !== '' ? Number(v) : null;
+      }).filter(x => x !== null && !isNaN(x));
+
+
+      const minS = vals.length ? Math.min(...vals).toFixed(2) : '—';
+      const maxS = vals.length ? Math.max(...vals).toFixed(2) : '—';
+
+
+      const card = document.createElement('div');
+      card.className = 'bg-[#1a1e23] p-4 rounded-lg shadow-lg';
+      card.innerHTML = `<h3 class="text-lg font-bold mb-2">${id}</h3>
+                        <p class="text-gray-300 mb-1"><b>Records:</b> ${rows.length}</p>
+                        <p class="text-gray-300"><b>Salinity:</b> Min ${minS} PSU — Max ${maxS} PSU</p>`;
+      container.appendChild(card);
+    }
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = `<div class="text-red-400">Failed to load salinity profiles.</div>`;
+  }
+}
+
+
+/* ---------- Trajectory Map ---------- */
+async function initTrajectoryMap() {
+  if (trajMapInitialized) return;
+  trajMapInitialized = true;
+
+
+  const el = document.getElementById('trajectory-map');
+  el.innerHTML = '';
+  trajMap = L.map('trajectory-map').setView([20, 0], 2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(trajMap);
+
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/floats`);
+    const allFloats = await res.json();
+    const ids = Object.keys(allFloats);
+
+
+    for (const id of ids) {
+      let rows = [];
+      try {
+        const r = await fetch(`${BACKEND_URL}/float/${id}/data`);
+        rows = (await r.json()).data || [];
+      } catch (e) { rows = []; }
+
+
+      const latlngs = rows
+        .map(row => {
+          const lat = row.latitude ?? row.Lat ?? row.lat ?? row.LAT;
+          const lon = row.longitude ?? row.Long ?? row.lon ?? row.LON ?? row.long;
+          if (lat && lon) return [Number(lat), Number(lon)];
+          return null;
+        })
+        .filter(x => x && !isNaN(x[0]) && !isNaN(x[1]));
+
+
+      if (latlngs.length > 1) {
+        const color = `hsl(${Math.random() * 360}, 70%, 50%)`;
+        L.polyline(latlngs, { color, weight: 3 }).addTo(trajMap);
+        L.circleMarker(latlngs[0], { color: 'green', radius: 5 }).bindPopup(`<b>${id}</b> start`).addTo(trajMap);
+        L.circleMarker(latlngs[latlngs.length - 1], { color: 'red', radius: 5 }).bindPopup(`<b>${id}</b> end`).addTo(trajMap);
+      }
+    }
+  } catch (err) {
+    console.error("Trajectory map init error:", err);
+  }
+}
+
+
+/* ---------- Heatmap ---------- */
+async function initHeatmap() {
+  if (heatMapInitialized) return;
+  heatMapInitialized = true;
+
+
+  const el = document.getElementById('heatmap-map');
+  el.innerHTML = '';
+  heatMap = L.map('heatmap-map').setView([12.34, 56.78], 3);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(heatMap);
+
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/floats`);
+    const allFloats = await res.json();
+    const ids = Object.keys(allFloats);
+
+    for (const id of ids) {
+      let rows = [];
+      try {
+        const r = await fetch(`${BACKEND_URL}/float/${id}/data`);
+        rows = (await r.json()).data || [];
+      } catch (e) { rows = []; }
+
+
+      rows.forEach(row => {
+        const lat = row.latitude ?? row.Lat ?? row.lat ?? row.LAT;
+        const lon = row.longitude ?? row.Long ?? row.lon ?? row.LON ?? row.long;
+        const t = row.temperature ?? row.temp ?? row.T ?? row.t;
+        if (!lat || !lon) return;
+        const val = t !== undefined && t !== '' ? Number(t) : NaN;
+        let color = '#4f83cc'; // default blue
+        if (!isNaN(val)) {
+          if (val >= 30) color = '#d73027';
+          else if (val >= 25) color = '#fc8d59';
+          else if (val >= 18) color = '#fee08b';
+          else color = '#91bfdb';
+        }
+        L.circleMarker([Number(lat), Number(lon)], { radius: 5, fillColor: color, color, weight: 0.5, fillOpacity: 0.8 })
+          .bindPopup(`<b>${id}</b><br>Temp: ${isNaN(val) ? 'N/A' : val}`).addTo(heatMap);
+      });
+    }
+  } catch (err) {
+    console.error("Heatmap init error:", err);
+  }
+}
+
+
+/* ---------- Time Series ---------- */
+async function initTimeSeries() {
+  if (timeSeriesInitialized) return;
+  timeSeriesInitialized = true;
+
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/floats`);
+    const allFloats = await res.json();
+    const ids = Object.keys(allFloats);
+
+
+    const datasets = [];
+    let labels = null;
+
+
+    for (const id of ids) {
+      let rows = [];
+      try {
+        const r = await fetch(`${BACKEND_URL}/float/${id}/data`);
+        rows = (await r.json()).data || [];
+      } catch (e) { rows = []; }
+
+
+      const dates = rows.map(r => r.timestamp ?? r.date ?? r.Date ?? r.time ?? r.datetime ?? null);
+      const temps = rows.map(r => {
+        const v = r.temperature ?? r.temp ?? r.T ?? r.t;
+        return v !== undefined && v !== '' ? Number(v) : NaN;
+      });
+
+
+      if (!labels) {
+        if (dates.some(d => d)) labels = dates.map(d => d ?? '');
+        else labels = rows.map((_, i) => String(i + 1));
+      }
+
+
+      datasets.push({
+        label: id,
+        data: temps,
+        borderColor: `hsl(${Math.random() * 360}, 70%, 50%)`,
+        backgroundColor: 'transparent',
+        tension: 0.25,
+        spanGaps: true
+      });
+    }
+
+
+    const ctx = document.getElementById('timeseries-canvas').getContext('2d');
+    if (timeSeriesChart) timeSeriesChart.destroy();
+    timeSeriesChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: labels || [], datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: 'white' } } },
+        scales: {
+          x: { ticks: { color: 'white' }, grid: { color: '#283039' } },
+          y: { ticks: { color: 'white' }, grid: { color: '#283039' } }
+        }
+      }
+    });
+  } catch (err) {
+    console.error("TimeSeries init error:", err);
+    document.getElementById('timeseries-canvas').parentElement.innerHTML = '<div class="text-red-400 p-6">Failed to render time series.</div>';
+  }
+}
+
+
+/* ---------- Init on load ---------- */
+document.addEventListener('DOMContentLoaded', async () => {
+  initDashboardMap();
+  await loadFloats();
+  // keep home visible by default; dashboard visible as user scrolls
+});
+
+
+/* Expose showSection globally for inline-onclick handlers */
+window.showSection = showSection;
+</script>
+
+
+</body>
+</html>
